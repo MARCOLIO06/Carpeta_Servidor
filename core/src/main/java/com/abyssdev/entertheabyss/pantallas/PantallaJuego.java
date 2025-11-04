@@ -1,15 +1,17 @@
 package com.abyssdev.entertheabyss.pantallas;
 
+import com.abyssdev.entertheabyss.interfaces.GameController;
 import com.abyssdev.entertheabyss.mapas.Mapa;
 import com.abyssdev.entertheabyss.mapas.Sala;
 import com.abyssdev.entertheabyss.mapas.SpawnPoint;
 import com.abyssdev.entertheabyss.mapas.ZonaTransicion;
 import com.abyssdev.entertheabyss.logica.ManejoEntradas;
-import com.abyssdev.entertheabyss.personajes.Accion;
+import com.abyssdev.entertheabyss.network.ServerThread;
 import com.abyssdev.entertheabyss.personajes.Boss;
 import com.abyssdev.entertheabyss.personajes.Enemigo;
 import com.abyssdev.entertheabyss.personajes.Jugador;
 import com.abyssdev.entertheabyss.ui.Hud;
+import com.abyssdev.entertheabyss.ui.Sonidos;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -18,17 +20,20 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.viewport.FitViewport;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-import com.abyssdev.entertheabyss.ui.Sonidos;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
-public class PantallaJuego extends Pantalla {
+public class PantallaJuego extends Pantalla implements GameController {
 
     private OrthographicCamera camara;
     private Viewport viewport;
-    private Jugador jugador;
+
+    // 🎮 Mapa de jugadores (para multijugador)
+    private HashMap<Integer, Jugador> jugadores = new HashMap<>();
+    private Jugador jugadorLocal; // El jugador de este servidor
+
     private Mapa mapaActual;
     private Sala salaActual;
     private ManejoEntradas inputProcessor;
@@ -47,6 +52,10 @@ public class PantallaJuego extends Pantalla {
     private Hud hud;
     private boolean yaInicializado = false;
 
+    // 🌐 RED
+    private ServerThread serverThread;
+    private boolean juegoIniciado = false;
+
     public PantallaJuego(Game juego, SpriteBatch batch) {
         super(juego, batch);
     }
@@ -54,21 +63,32 @@ public class PantallaJuego extends Pantalla {
     @Override
     public void show() {
         if (!yaInicializado) {
-            jugador = new Jugador();
+            // Inicializar jugador local (servidor)
+            jugadorLocal = new Jugador();
+            jugadores.put(1, jugadorLocal); // Jugador 1 es el servidor
+
+            // Inicializar mapa
             mapaActual = new Mapa("mazmorra1");
-            mapaActual.agregarSala(new Sala("sala1", "maps/mapa1_sala1.tmx",5));
-            mapaActual.agregarSala(new Sala("sala2", "maps/mapa1_sala2.tmx",1));
-            mapaActual.agregarSala(new Sala("sala5", "maps/mapa2_posible.tmx",15));
-            mapaActual.agregarSala(new Sala("sala4", "maps/mapa1_sala4.tmx",1));
-            mapaActual.agregarSala(new Sala("sala3", "maps/mapa1_sala5.tmx",1));
+            mapaActual.agregarSala(new Sala("sala1", "maps/mapa1_sala1.tmx", 5));
+            mapaActual.agregarSala(new Sala("sala2", "maps/mapa1_sala2.tmx", 1));
+            mapaActual.agregarSala(new Sala("sala5", "maps/mapa2_posible.tmx", 15));
+            mapaActual.agregarSala(new Sala("sala4", "maps/mapa1_sala4.tmx", 1));
+            mapaActual.agregarSala(new Sala("sala3", "maps/mapa1_sala5.tmx", 1));
 
             camara = new OrthographicCamera();
             viewport = new FitViewport(32, 32 * (9f / 16f), camara);
             texturaFade = generarTextura();
             cambiarSala("sala1");
-            hud = new Hud(jugador, viewport);
-            inputProcessor = new ManejoEntradas(jugador);
+            hud = new Hud(jugadorLocal, viewport);
+            inputProcessor = new ManejoEntradas(jugadorLocal);
+
+            // 🌐 Iniciar servidor
+            serverThread = new ServerThread(this);
+            serverThread.start();
+
             yaInicializado = true;
+
+            System.out.println("🎮 Servidor de juego iniciado. Esperando jugadores...");
         } else {
             actualizarCamara();
         }
@@ -98,13 +118,13 @@ public class PantallaJuego extends Pantalla {
                     }
 
                     if (spawn != null) {
-                        jugador.setX(spawn.x);
-                        jugador.setY(spawn.y);
+                        jugadorLocal.setX(spawn.x);
+                        jugadorLocal.setY(spawn.y);
                     } else {
                         if (!salaDestino.getSpawnPoints().isEmpty()) {
                             SpawnPoint fallback = salaDestino.getSpawnPoints().first();
-                            jugador.setX(fallback.x);
-                            jugador.setY(fallback.y);
+                            jugadorLocal.setX(fallback.x);
+                            jugadorLocal.setY(fallback.y);
                         } else {
                             centrarJugadorEnSala();
                         }
@@ -121,37 +141,40 @@ public class PantallaJuego extends Pantalla {
                 }
             }
             if (defaultSpawn != null) {
-                jugador.setX(defaultSpawn.x);
-                jugador.setY(defaultSpawn.y);
+                jugadorLocal.setX(defaultSpawn.x);
+                jugadorLocal.setY(defaultSpawn.y);
             } else {
                 centrarJugadorEnSala();
             }
         }
 
-        camara.position.set(jugador.getX(), jugador.getY(), 0);
+        camara.position.set(jugadorLocal.getX(), jugadorLocal.getY(), 0);
         camara.update();
         salaActual.getRenderer().setView(camara);
 
         if (salaActual.getEnemigos() == null || salaActual.getEnemigos().isEmpty()) {
             salaActual.generarEnemigos();
         }
+
+        // 🌐 Notificar cambio de sala a todos los clientes
+        serverThread.sendMessageToAll("RoomChange:" + destinoId);
     }
 
     private void centrarJugadorEnSala() {
         float centroX = salaActual.getAnchoMundo() / 2f;
         float centroY = salaActual.getAltoMundo() / 2f;
-        jugador.setX(centroX);
-        jugador.setY(centroY);
+        jugadorLocal.setX(centroX);
+        jugadorLocal.setY(centroY);
     }
 
     private void verificarTransiciones() {
         if (enTransicion) return;
 
         Rectangle hitboxJugador = new Rectangle(
-            jugador.getX() + jugador.getAncho() / 4f,
-            jugador.getY(),
-            jugador.getAncho() / 2f,
-            jugador.getAlto()
+            jugadorLocal.getX() + jugadorLocal.getAncho() / 4f,
+            jugadorLocal.getY(),
+            jugadorLocal.getAncho() / 2f,
+            jugadorLocal.getAlto()
         );
 
         for (ZonaTransicion zona : salaActual.getZonasTransicion()) {
@@ -179,6 +202,14 @@ public class PantallaJuego extends Pantalla {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        if (!juegoIniciado) {
+            // Pantalla de espera
+            batch.begin();
+            // Aquí podrías dibujar un mensaje de "Esperando jugadores..."
+            batch.end();
+            return;
+        }
+
         salaActual.getRenderer().setView(camara);
         salaActual.getRenderer().render();
 
@@ -187,61 +218,80 @@ public class PantallaJuego extends Pantalla {
             for (int i = enemigos.size() - 1; i >= 0; i--) {
                 Enemigo enemigo = enemigos.get(i);
                 if (enemigo.debeEliminarse()) {
-                    jugador.modificarMonedas(10);
+                    jugadorLocal.modificarMonedas(10);
                     System.out.println("✅ Enemigo eliminado. Jugador recibe 10 monedas.");
+
+                    // 🌐 Notificar muerte de enemigo
+                    serverThread.sendMessageToAll("EnemyDead:" + i);
+                    serverThread.sendMessageToAll("UpdateCoins:1:" + jugadorLocal.getMonedas());
+
                     enemigos.remove(i);
                     continue;
                 }
 
-                if (enemigo.actualizar(delta, jugador.getPosicion(), salaActual.getColisiones(), enemigos)) {
-                    jugador.recibirDanio(enemigo.getDanio());
-                    if (jugador.getVida() <= 0) {
-                        juego.setScreen(new PantallaGameOver(juego,batch));
+                if (enemigo.actualizar(delta, jugadorLocal.getPosicion(), salaActual.getColisiones(), enemigos)) {
+                    jugadorLocal.recibirDanio(enemigo.getDanio());
+
+                    // 🌐 Actualizar vida
+                    serverThread.sendMessageToAll("UpdateHealth:1:" + jugadorLocal.getVida());
+
+                    if (jugadorLocal.getVida() <= 0) {
+                        serverThread.sendMessageToAll("EndGame:2"); // Gana el jugador 2
+                        juego.setScreen(new PantallaGameOver(juego, batch));
                         return;
                     }
                 }
             }
 
-            if (jugador.getHitboxAtaque().getWidth() > 0) {
+            if (jugadorLocal.getHitboxAtaque().getWidth() > 0) {
                 for (int i = enemigos.size() - 1; i >= 0; i--) {
                     Enemigo enemigo = enemigos.get(i);
-                    if (!enemigo.debeEliminarse() && jugador.getHitboxAtaque().overlaps(enemigo.getRectangulo())) {
-                        enemigo.recibirDanio(jugador.getDanio());
+                    if (!enemigo.debeEliminarse() && jugadorLocal.getHitboxAtaque().overlaps(enemigo.getRectangulo())) {
+                        enemigo.recibirDanio(jugadorLocal.getDanio());
                     }
                 }
             }
         }
+
+        // Boss logic
         if (salaActual.getId().equalsIgnoreCase("sala5")) {
             if (salaActual.getBoss() == null) {
                 salaActual.generarBoss();
             }
             Boss boss = salaActual.getBoss();
             if (boss != null && !boss.debeEliminarse()) {
-                // Actualizar el Boss
-                if (boss.actualizar(delta, jugador.getPosicion(), salaActual.getColisiones(), enemigos != null ? enemigos : new ArrayList<>())) {
-                    jugador.recibirDanio(boss.getDanio());
-                    if (jugador.getVida() <= 0) {
+                if (boss.actualizar(delta, jugadorLocal.getPosicion(), salaActual.getColisiones(), enemigos != null ? enemigos : new ArrayList<>())) {
+                    jugadorLocal.recibirDanio(boss.getDanio());
+
+                    // 🌐 Actualizar vida
+                    serverThread.sendMessageToAll("UpdateHealth:1:" + jugadorLocal.getVida());
+
+                    if (jugadorLocal.getVida() <= 0) {
+                        serverThread.sendMessageToAll("EndGame:2");
                         juego.setScreen(new PantallaGameOver(juego, batch));
                         return;
                     }
                 }
 
-                // Comprobar ataque del jugador al Boss
-                if (jugador.getHitboxAtaque().getWidth() > 0) {
-                    if (jugador.getHitboxAtaque().overlaps(boss.getRectangulo())) {
-                        boss.recibirDanio(jugador.getDanio());
+                if (jugadorLocal.getHitboxAtaque().getWidth() > 0) {
+                    if (jugadorLocal.getHitboxAtaque().overlaps(boss.getRectangulo())) {
+                        boss.recibirDanio(jugadorLocal.getDanio());
                     }
                 }
             }
 
-            // ✅ Verificación de victoria: MOVIDA FUERA del if (!boss.debeEliminarse())
             if (boss != null && boss.debeEliminarse() &&
                 (enemigos == null || enemigos.isEmpty())) {
-                jugador.modificarMonedas(50);
+                jugadorLocal.modificarMonedas(50);
                 Sonidos.detenerTodaMusica();
                 System.out.println("✅ ¡JEFE DERROTADO! Jugador recibe 50 monedas.");
+
+                // 🌐 Victoria
+                serverThread.sendMessageToAll("BossDead");
+                serverThread.sendMessageToAll("EndGame:1");
+
                 juego.setScreen(new PantallaWin(juego, batch));
-                return; // Evita más procesamiento innecesario
+                return;
             }
         }
 
@@ -252,8 +302,14 @@ public class PantallaJuego extends Pantalla {
             e.printStackTrace();
         }
 
+        jugadorLocal.update(delta, salaActual.getColisiones());
 
-        jugador.update(delta, salaActual.getColisiones());
+        // 🌐 Enviar posición del jugador local a los clientes
+        if (juegoIniciado) {
+            serverThread.sendMessageToAll("UpdatePosition:Player:1:" +
+                jugadorLocal.getX() + ":" + jugadorLocal.getY());
+        }
+
         verificarProximidadOgrini();
         verificarTransiciones();
 
@@ -274,35 +330,33 @@ public class PantallaJuego extends Pantalla {
                 }
             }
         }
+
         if (jugadorCercaDeOgrini && Gdx.input.isKeyJustPressed(Input.Keys.T)) {
-            Sonidos.pausarMusicaJuego(); // Pausar música del juego
-            juego.setScreen(new PantallaTienda(juego, batch, jugador,this));
+            Sonidos.pausarMusicaJuego();
+            juego.setScreen(new PantallaTienda(juego, batch, jugadorLocal, this));
         }
 
         actualizarCamara();
 
         batch.setProjectionMatrix(camara.combined);
         batch.begin();
+
+        // Dibujar enemigos
         for (Enemigo enemigo : salaActual.getEnemigos()) {
             enemigo.renderizar(batch);
         }
-       Boss boss = salaActual.getBoss();
+
+        // Dibujar boss
+        Boss boss = salaActual.getBoss();
         if (boss != null) {
             boss.renderizar(batch);
         }
-        jugador.dibujar(batch);
-        //aca se puede elegir si mostrar un mensaje de tienda para el jugador
-        //otra idea es agregar un tutorial para que el jugador lea y sepa que
-        //cuando se acerca a ogrini puede comprar
-//        if (jugadorCercaDeOgrini) {
-//            // Dibujar texto indicador sobre el jugador
-//            com.badlogic.gdx.graphics.g2d.BitmapFont font = new com.badlogic.gdx.graphics.g2d.BitmapFont();
-//            font.getData().setScale(0.05f);
-//            font.setColor(com.badlogic.gdx.graphics.Color.YELLOW);
-//            font.draw(batch, "Presiona [T] para abrir tienda",
-//                jugador.getX() - 2f, jugador.getY() + jugador.getAlto() + 1f);
-//            font.dispose();
-//        }
+
+        // Dibujar todos los jugadores
+        for (Jugador jugador : jugadores.values()) {
+            jugador.dibujar(batch);
+        }
+
         batch.end();
 
         if (hud != null) {
@@ -320,61 +374,42 @@ public class PantallaJuego extends Pantalla {
 
         if (!enTransicion) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-                juego.setScreen(new PantallaPausa(juego,batch, this));
+                juego.setScreen(new PantallaPausa(juego, batch, this));
             }
             if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) {
                 Sonidos.pausarMusicaJuego();
-                // ✅ Ahora se obtienen las habilidades del jugador
-                juego.setScreen(new PantallaArbolHabilidades(juego, batch, this, jugador, jugador.getHabilidades()));
+                juego.setScreen(new PantallaArbolHabilidades(juego, batch, this, jugadorLocal, jugadorLocal.getHabilidades()));
             }
         }
-
-
     }
+
     private void verificarProximidadOgrini() {
         jugadorCercaDeOgrini = false;
+        if (salaActual == null || salaActual.getMapa() == null) return;
 
-        // Obtener los objetos de la capa de colisiones del mapa
-        if (salaActual == null || salaActual.getMapa() == null) {
-            return;
-        }
-
-        // Buscar la capa de objetos (en tu caso se llama "colisiones")
         com.badlogic.gdx.maps.MapLayer capaObjetos = salaActual.getMapa().getLayers().get("colisiones");
+        if (capaObjetos == null) return;
 
-        if (capaObjetos == null) {
-            return;
-        }
-
-        // Revisar todos los objetos de la capa
         com.badlogic.gdx.maps.MapObjects objetos = capaObjetos.getObjects();
-
         for (com.badlogic.gdx.maps.MapObject objeto : objetos) {
-            // Solo procesar RectangleMapObject
-            if (!(objeto instanceof com.badlogic.gdx.maps.objects.RectangleMapObject)) {
-                continue;
-            }
+            if (!(objeto instanceof com.badlogic.gdx.maps.objects.RectangleMapObject)) continue;
 
-            // Verificar si tiene las propiedades "nombre" y "tipo"
             String nombre = objeto.getProperties().get("nombre", String.class);
             String tipo = objeto.getProperties().get("tipo", String.class);
 
             if (nombre != null && nombre.equalsIgnoreCase("ogrini") &&
                 tipo != null && tipo.equalsIgnoreCase("tienda")) {
 
-                // Obtener el rectángulo y su posición
                 com.badlogic.gdx.maps.objects.RectangleMapObject rectObj =
                     (com.badlogic.gdx.maps.objects.RectangleMapObject) objeto;
                 com.badlogic.gdx.math.Rectangle rect = rectObj.getRectangle();
 
-                // Convertir a coordenadas del mundo (dividir por TILE_SIZE)
-                float objX = (rect.x + rect.width / 2f) / 16f;  // Centro del rectángulo
-                float objY = (rect.y + rect.height / 2f) / 16f; // Centro del rectángulo
+                float objX = (rect.x + rect.width / 2f) / 16f;
+                float objY = (rect.y + rect.height / 2f) / 16f;
 
-                // Calcular distancia entre jugador y centro de Ogrini
                 float distancia = (float) Math.sqrt(
-                    Math.pow(jugador.getX() - objX, 2) +
-                        Math.pow(jugador.getY() - objY, 2)
+                    Math.pow(jugadorLocal.getX() - objX, 2) +
+                        Math.pow(jugadorLocal.getY() - objY, 2)
                 );
 
                 if (distancia <= DISTANCIA_INTERACCION) {
@@ -389,8 +424,8 @@ public class PantallaJuego extends Pantalla {
         float halfWidth = camara.viewportWidth / 2f;
         float halfHeight = camara.viewportHeight / 2f;
 
-        float x = jugador.getX();
-        float y = jugador.getY();
+        float x = jugadorLocal.getX();
+        float y = jugadorLocal.getY();
 
         float limiteIzquierdo = halfWidth;
         float limiteDerecho = Math.max(limiteIzquierdo, salaActual.getAnchoMundo() - halfWidth);
@@ -413,6 +448,74 @@ public class PantallaJuego extends Pantalla {
         return textura;
     }
 
+    // ========================================
+    // 🎮 IMPLEMENTACIÓN DE GameController
+    // ========================================
+
+    @Override
+    public void startGame() {
+        System.out.println("🎮 ¡Juego iniciado con todos los jugadores conectados!");
+        juegoIniciado = true;
+
+        // Crear jugador 2 (cliente)
+        Jugador jugador2 = new Jugador();
+        jugador2.setX(jugadorLocal.getX() + 2); // Spawn cerca del jugador 1
+        jugador2.setY(jugadorLocal.getY());
+        jugadores.put(2, jugador2);
+    }
+
+    @Override
+    public void move(int numPlayer, float x, float y) {
+        Jugador jugador = jugadores.get(numPlayer);
+        if (jugador != null) {
+            jugador.setX(x);
+            jugador.setY(y);
+        }
+    }
+
+    @Override
+    public void attack(int numPlayer) {
+        // El cliente atacó, procesar lógica si es necesario
+        System.out.println("⚔️ Jugador " + numPlayer + " atacó");
+    }
+
+    @Override
+    public void enemyKilled(int numPlayer, int enemyId) {
+        System.out.println("💀 Jugador " + numPlayer + " mató enemigo " + enemyId);
+        // Dar monedas al jugador
+        Jugador jugador = jugadores.get(numPlayer);
+        if (jugador != null) {
+            jugador.modificarMonedas(10);
+            serverThread.sendMessageToAll("UpdateCoins:" + numPlayer + ":" + jugador.getMonedas());
+        }
+    }
+
+    @Override
+    public void bossKilled(int numPlayer) {
+        System.out.println("👑 Jugador " + numPlayer + " mató al jefe");
+        Jugador jugador = jugadores.get(numPlayer);
+        if (jugador != null) {
+            jugador.modificarMonedas(50);
+            serverThread.sendMessageToAll("UpdateCoins:" + numPlayer + ":" + jugador.getMonedas());
+        }
+        serverThread.sendMessageToAll("EndGame:" + numPlayer);
+    }
+
+    @Override
+    public void changeRoom(int numPlayer, String roomId) {
+        System.out.println("🚪 Jugador " + numPlayer + " cambió a sala " + roomId);
+    }
+
+    @Override
+    public void timeOut() {
+        // Timeout después de finalizar el juego
+        serverThread.disconnectClients();
+    }
+
+    // ========================================
+    // 🧹 LIMPIEZA
+    // ========================================
+
     @Override
     public void resize(int width, int height) {
         viewport.update(width, height, true);
@@ -425,14 +528,17 @@ public class PantallaJuego extends Pantalla {
 
     @Override
     public void dispose() {
+        if (serverThread != null) {
+            serverThread.terminate();
+        }
         if (mapaActual != null) {
             mapaActual.dispose();
         }
         if (hud != null) {
             hud.dispose();
         }
-        if (jugador != null) {
-            jugador.dispose(); // ✅ Esto ahora libera también las texturas de habilidades
+        for (Jugador jugador : jugadores.values()) {
+            jugador.dispose();
         }
         if (texturaFade != null) {
             texturaFade.dispose();

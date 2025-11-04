@@ -19,7 +19,13 @@ public class MenuInicio extends Pantalla {
     private BitmapFont fontOpciones;
     private Texture fondo;
 
-    private final String[] opciones = {"Comenzar", "Opciones", "Tutorial", "Salir"};
+    private final String[] opciones = {
+        "Iniciar Servidor",
+        "Unirse como Cliente",
+        "Opciones",
+        "Tutorial",
+        "Salir"
+    };
     private int opcionSeleccionada = 0;
 
     private float tiempoParpadeo = 0;
@@ -64,7 +70,6 @@ public class MenuInicio extends Pantalla {
         camara.update();
         batch.setProjectionMatrix(camara.combined);
 
-
         float ancho = Gdx.graphics.getWidth();
         float alto = Gdx.graphics.getHeight();
         float centerX = ancho / 2f;
@@ -72,12 +77,10 @@ public class MenuInicio extends Pantalla {
 
         batch.begin();
 
-
         batch.draw(fondo, 0, 0, ancho, alto);
 
-
         float escalaUI = Math.min(ancho / 640f, alto / 480f);
-        float startY = centerY + (50 * escalaUI);
+        float startY = centerY + (80 * escalaUI);
         float espacioOpciones = 70 * escalaUI;
 
         for (int i = 0; i < opciones.length; i++) {
@@ -132,17 +135,23 @@ public class MenuInicio extends Pantalla {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             switch (opcionSeleccionada) {
-                case 0:
-                    Sonidos.reproducirMusicaJuego();
-                    juego.setScreen(new PantallaJuego(juego, batch));
+                case 0: // Iniciar Servidor
+                    System.out.println("🖥️ Iniciando SERVIDOR DEDICADO...");
+                    Sonidos.detenerTodaMusica();
+                    juego.setScreen(new PantallaServidor(juego, batch));
                     break;
-                case 1:
+                case 1: // Unirse como Cliente
+                    System.out.println("💻 Iniciando CLIENTE...");
+                    Sonidos.reproducirMusicaJuego();
+                    juego.setScreen(new PantallaJuego(juego, batch)); // Tu PantallaJuego de cliente
+                    break;
+                case 2: // Opciones
                     juego.setScreen(new PantallaOpciones(juego, batch, this));
                     break;
-                case 2:
+                case 3: // Tutorial
                     juego.setScreen(new PantallaTutorial(juego, batch, this));
                     break;
-                case 3:
+                case 4: // Salir
                     Gdx.app.exit();
                     break;
             }
