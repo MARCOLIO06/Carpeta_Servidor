@@ -21,7 +21,6 @@ public class MenuInicio extends Pantalla {
 
     private final String[] opciones = {
         "Iniciar Servidor",
-        "Unirse como Cliente",
         "Opciones",
         "Tutorial",
         "Salir"
@@ -140,18 +139,13 @@ public class MenuInicio extends Pantalla {
                     Sonidos.detenerTodaMusica();
                     juego.setScreen(new PantallaServidor(juego, batch));
                     break;
-                case 1: // Unirse como Cliente
-                    System.out.println("💻 Iniciando CLIENTE...");
-                    Sonidos.reproducirMusicaJuego();
-                    juego.setScreen(new PantallaJuego(juego, batch)); // Tu PantallaJuego de cliente
-                    break;
-                case 2: // Opciones
+                case 1:
                     juego.setScreen(new PantallaOpciones(juego, batch, this));
                     break;
-                case 3: // Tutorial
+                case 2: // Tutorial
                     juego.setScreen(new PantallaTutorial(juego, batch, this));
                     break;
-                case 4: // Salir
+                case 3: // Salir
                     Gdx.app.exit();
                     break;
             }

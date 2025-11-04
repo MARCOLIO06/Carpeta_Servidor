@@ -9,7 +9,7 @@ import java.util.ArrayList;
 public class ServerThread extends Thread {
 
     private DatagramSocket socket;
-    private int serverPort = 9999;
+    private final int serverPort = 9999;
     private boolean end = false;
     private final int MAX_CLIENTS = 2;
     private int connectedClients = 0;
@@ -81,14 +81,18 @@ public class ServerThread extends Thread {
             Client client = clients.get(index);
             switch(parts[0]){
                 case "Move":
-                    // Move:x:y
+                    // Move:x:y:action:direction
                     float x = Float.parseFloat(parts[1]);
                     float y = Float.parseFloat(parts[2]);
+                    String action = parts.length > 3 ? parts[3] : "ESTATICO";
+                    String direction = parts.length > 4 ? parts[4] : "ABAJO";
+
                     gameController.move(client.getNum(), x, y);
-                    // Reenviar a todos los demás clientes
+
+                    // Reenviar a todos los demás clientes CON animación
                     for(Client otherClient : clients) {
                         if(otherClient.getNum() != client.getNum()) {
-                            sendMessage("UpdatePosition:Player:" + client.getNum() + ":" + x + ":" + y,
+                            sendMessage("UpdatePosition:Player:" + client.getNum() + ":" + x + ":" + y + ":" + action + ":" + direction,
                                 otherClient.getIp(), otherClient.getPort());
                         }
                     }
@@ -124,6 +128,11 @@ public class ServerThread extends Thread {
                     // ChangeRoom:roomId
                     String roomId = parts[1];
                     gameController.changeRoom(client.getNum(), roomId);
+                    break;
+
+                case "RequestEnemies":
+                    // Cliente solicita lista de enemigos
+                    // El servidor debe enviar la lista desde PantallaJuego
                     break;
             }
         }

@@ -500,6 +500,7 @@ public class Jugador {
     public void moverIzquierda(boolean activo) { this.izquierda = activo; }
     public void moverDerecha(boolean activo) { this.derecha = activo; }
 
+
     public void recibirDanio(int danioBruto) {
         if (danioBruto <= 0) return;
 

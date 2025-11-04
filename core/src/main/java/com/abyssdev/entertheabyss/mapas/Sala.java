@@ -22,9 +22,9 @@ public class Sala {
     private String id;
     private TiledMap mapa;
     private OrthogonalTiledMapRenderer renderer;
-    private Array<Rectangle> colisionesEstaticas;   // ✅ Paredes fijas
-    private Array<Rectangle> colisionesDinamicas;   // ✅ Puertas (pueden desaparecer)
-    private Array<Rectangle> colisiones;            // ✅ Todas las colisiones combinadas
+    private Array<Rectangle> colisionesEstaticas;
+    private Array<Rectangle> colisionesDinamicas;
+    private Array<Rectangle> colisiones;
     private Array<ZonaTransicion> zonasTransicion;
     private ArrayList<Enemigo> enemigos;
     private Boss bossFinal;
@@ -385,6 +385,8 @@ public class Sala {
     public Boss getBoss() { return this.bossFinal; }
     public void setBoss(Boss boss) { this.bossFinal = boss; }
     public boolean getBossGenerado() { return this.bossGenerado; }
+
+
 
     public void dispose() {
         if (mapa != null) mapa.dispose();

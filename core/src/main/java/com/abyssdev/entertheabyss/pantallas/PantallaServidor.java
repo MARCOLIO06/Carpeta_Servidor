@@ -249,6 +249,9 @@ public class PantallaServidor extends Pantalla implements GameController {
      public void endGame(int winner) {}
      public void backToMenu() {}
 
+
+
+
     @Override
     public void resize(int width, int height) {}
 

@@ -452,6 +452,24 @@ public class PantallaJuego extends Pantalla implements GameController {
     // 🎮 IMPLEMENTACIÓN DE GameController
     // ========================================
 
+    private void enviarPosicionesEnemigos() {
+        if (salaActual == null || salaActual.getEnemigos() == null) return;
+
+        StringBuilder enemiesData = new StringBuilder();
+        ArrayList<Enemigo> enemigos = salaActual.getEnemigos();
+
+        for (int i = 0; i < enemigos.size(); i++) {
+            Enemigo e = enemigos.get(i);
+            enemiesData.append(e.getPosicion().x).append(",").append(e.getPosicion().y);
+            if (i < enemigos.size() - 1) {
+                enemiesData.append(";");
+            }
+        }
+
+        serverThread.sendMessageToAll("SyncEnemies:" + enemiesData.toString());
+        System.out.println("📍 Sincronizando " + enemigos.size() + " enemigos");
+    }
+
     @Override
     public void startGame() {
         System.out.println("🎮 ¡Juego iniciado con todos los jugadores conectados!");
@@ -459,10 +477,12 @@ public class PantallaJuego extends Pantalla implements GameController {
 
         // Crear jugador 2 (cliente)
         Jugador jugador2 = new Jugador();
-        jugador2.setX(jugadorLocal.getX() + 2); // Spawn cerca del jugador 1
+        jugador2.setX(jugadorLocal.getX() + 2);
         jugador2.setY(jugadorLocal.getY());
         jugadores.put(2, jugador2);
+        enviarPosicionesEnemigos();
     }
+
 
     @Override
     public void move(int numPlayer, float x, float y) {
